@@ -54,8 +54,8 @@ class AutoencoderKL(pl.LightningModule):
         return posterior
 
     def decode(self, z):
-        z = self.post_quant_conv(z)
-        dec = self.decoder(z)
+        z = self.post_quant_conv(z) # [B, 4, 64, 64] -> [B, 4, 64, 64]
+        dec = self.decoder(z)       # [B, 4, 64, 64] -> [B, 3, 512, 512]
         return dec
 
     def forward(self, input, sample_posterior=True):

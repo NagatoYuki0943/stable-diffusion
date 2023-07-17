@@ -624,14 +624,14 @@ class Decoder(nn.Module):
         temb = None
 
         # z to block_in
-        h = self.conv_in(z)
+        h = self.conv_in(z) # [B, 4, 64, 64] -> [B, 512, 64, 64]
 
-        # middle
+        # middle [B, 512, 64, 64] -> [B, 512, 64, 64]
         h = self.mid.block_1(h, temb)
         h = self.mid.attn_1(h)
         h = self.mid.block_2(h, temb)
 
-        # upsampling
+        # upsampling    [B, 512, 64, 64] -> [B, 512, 128, 128] -> [B, 256, 256, 256] -> [B, 128, 512, 512]
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(self.num_res_blocks+1):
                 h = self.up[i_level].block[i_block](h, temb)
@@ -646,7 +646,7 @@ class Decoder(nn.Module):
 
         h = self.norm_out(h)
         h = nonlinearity(h)
-        h = self.conv_out(h)
+        h = self.conv_out(h)    # [B, 128, 512, 512] -> [B, 3, 512, 512]
         if self.tanh_out:
             h = torch.tanh(h)
         return h

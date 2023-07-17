@@ -120,12 +120,14 @@ class DDIMSampler(object):
                       mask=None, x0=None, img_callback=None, log_every_t=100,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
                       unconditional_guidance_scale=1., unconditional_conditioning=None,):
+        """循环预测噪音并减去噪音"""
+
         device = self.model.betas.device
         b = shape[0]
         # 生成隐空间的初始向量，文生图。
         # 或者直接使用传入进来的x_T，图生图。
         if x_T is None:
-            img = torch.randn(shape, device=device)
+            img = torch.randn(shape, device=device) # [B, 4, 64, 64]
         else:
             img = x_T
 
@@ -163,7 +165,7 @@ class DDIMSampler(object):
                                       corrector_kwargs=corrector_kwargs,
                                       unconditional_guidance_scale=unconditional_guidance_scale,
                                       unconditional_conditioning=unconditional_conditioning)
-            img, pred_x0 = outs
+            img, pred_x0 = outs # [B, 4, 64, 64], [B, 4, 64, 64]
             # 回调函数
             if callback: callback(i)
             if img_callback: img_callback(pred_x0, i)
@@ -178,8 +180,9 @@ class DDIMSampler(object):
     def p_sample_ddim(self, x, c, t, index, repeat_noise=False, use_original_steps=False, quantize_denoised=False,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
                       unconditional_guidance_scale=1., unconditional_conditioning=None):
-        b, *_, device = *x.shape, x.device
+        """单次时间步预测噪音并减去噪音"""
 
+        b, *_, device = *x.shape, x.device
         # 首先判断是否由neg prompt，unconditional_conditioning是由neg prompt获得的
         if unconditional_conditioning is None or unconditional_guidance_scale == 1.:
             e_t = self.model.apply_model(x, t, c)
@@ -187,12 +190,12 @@ class DDIMSampler(object):
             # 一般都是有neg prompt的，所以进入到这里
             # 在这里我们对隐向量和步数进行复制，一个属于pos prompt，一个属于neg prompt
             # torch.cat默认堆叠维度为0，所以是在bs维度进行堆叠，二者不会互相影响
-            x_in = torch.cat([x] * 2)
-            t_in = torch.cat([t] * 2)
+            x_in = torch.cat([x] * 2)   # [B, 4, 64, 64] ->  [2*B, 4, 64, 64]
+            t_in = torch.cat([t] * 2)   # [B] -> [2*B]
             # 然后我们将pos prompt和neg prompt堆叠到一个batch中
             if isinstance(c, dict):
                 assert isinstance(unconditional_conditioning, dict)
-                c_in = dict()
+                c_in = dict() # {'c_crossattn': [2*B, 77, 768]}
                 for k in c:
                     if isinstance(c[k], list):
                         c_in[k] = [
@@ -204,7 +207,9 @@ class DDIMSampler(object):
             else:
                 c_in = torch.cat([unconditional_conditioning, c])
             # 堆叠完后，隐向量、步数和prompt条件一起传入网络中，将结果在bs维度进行使用chunk进行分割
-            e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
+            e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2) # [2*B, 4, 64, 64], [2*B], [2*B, 77, 768] -> [B, 4, 64, 64], [B, 4, 64, 64]
+            # e_t为最终预测的噪音
+            # 使用`e_t-e_t_uncond`计算二者的距离，使用scale扩大二者的距离。在e_t_uncond基础上，得到最后的隐向量
             e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
 
         # 一般不用
@@ -212,7 +217,7 @@ class DDIMSampler(object):
             assert self.model.parameterization == "eps"
             e_t = score_corrector.modify_score(self.model, e_t, x, t, c, **corrector_kwargs)
 
-        # 根据采样器选择参数
+        # 根据采样器选择参数 形状均为[20],20为迭代次数
         alphas      = self.model.alphas_cumprod if use_original_steps else self.ddim_alphas
         alphas_prev = self.model.alphas_cumprod_prev if use_original_steps else self.ddim_alphas_prev
         sqrt_one_minus_alphas = self.model.sqrt_one_minus_alphas_cumprod if use_original_steps else self.ddim_sqrt_one_minus_alphas
@@ -226,14 +231,14 @@ class DDIMSampler(object):
         sqrt_one_minus_at = torch.full((b, 1, 1, 1), sqrt_one_minus_alphas[index],device=device)
 
         # current prediction for x_0
-        # 公式中的最左边
+        # 公式中的最左边        [B, 4, 64, 64]
         pred_x0             = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()
         if quantize_denoised:
             pred_x0, _, *_  = self.model.first_stage_model.quantize(pred_x0)
         # direction pointing to x_t
-        # 公式的中间
+        # 公式的中间            [B, 4, 64, 64]
         dir_xt              = (1. - a_prev - sigma_t**2).sqrt() * e_t
-        # 公式最右边
+        # 公式最右边,添加随机噪音 [B, 4, 64, 64]
         noise               = sigma_t * noise_like(x.shape, device, repeat_noise) * temperature
         if noise_dropout > 0.:
             noise           = torch.nn.functional.dropout(noise, p=noise_dropout)

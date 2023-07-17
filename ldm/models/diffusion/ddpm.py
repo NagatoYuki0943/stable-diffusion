@@ -17,7 +17,7 @@ from functools import partial
 import itertools
 from tqdm import tqdm
 from torchvision.utils import make_grid
-from pytorch_lightning.utilities.distributed import rank_zero_only
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from omegaconf import ListConfig
 
 from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
@@ -823,7 +823,7 @@ class LatentDiffusion(DDPM):
                 z = torch.argmax(z.exp(), dim=1).long()
             z = self.first_stage_model.quantize.get_codebook_entry(z, shape=None)
             z = rearrange(z, 'b h w c -> b c h w').contiguous()
-
+        # [B, 4, 64, 64]
         z = 1. / self.scale_factor * z
         return self.first_stage_model.decode(z)
 
@@ -847,7 +847,7 @@ class LatentDiffusion(DDPM):
                 c = self.q_sample(x_start=c, t=tc, noise=torch.randn_like(c.float()))
         return self.p_losses(x, c, t, *args, **kwargs)
 
-    def apply_model(self, x_noisy, t, cond, return_ids=False):
+    def apply_model(self, x_noisy, t, cond, return_ids=False): # x_noisy: [2*B, 4, 64, 64]
         if isinstance(cond, dict):
             # hybrid case, cond is expected to be a dict
             pass
@@ -856,7 +856,7 @@ class LatentDiffusion(DDPM):
                 cond = [cond]
             key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
             cond = {key: cond}
-        # 将x_noisy传入self.model中
+        # 将x_noisy传入self.model中 [2*B, 4, 64, 64] -> [2*B, 4, 64, 64]
         x_recon = self.model(x_noisy, t, **cond)
 
         if isinstance(x_recon, tuple) and not return_ids:

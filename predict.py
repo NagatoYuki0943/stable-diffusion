@@ -56,8 +56,8 @@ with torch.no_grad():
     # ----------------------- #
     #   获得编码后的prompt
     # ----------------------- #
-    cond    = {"c_crossattn": [model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]}
-    un_cond = {"c_crossattn": [model.get_learned_conditioning([n_prompt] * num_samples)]}
+    cond    = {"c_crossattn": [model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]}   # [B, 77, 768]
+    un_cond = {"c_crossattn": [model.get_learned_conditioning([n_prompt] * num_samples)]}                   # [B, 77, 768]
     H, W    = input_shape
     shape   = (4, H // 8, W // 8)
 

@@ -120,14 +120,20 @@ class FrozenCLIPEmbedder(AbstractEncoder):
         # 对输入的图片进行分词并编码，padding直接padding到77的长度。
         batch_encoding  = self.tokenizer(text, truncation=True, max_length=self.max_length, return_length=True,
                                         return_overflowing_tokens=False, padding="max_length", return_tensors="pt")
+        # print(batch_encoding.keys())                  # ['input_ids', 'length', 'attention_mask']
+        # print(batch_encoding["input_ids"].shape)      # [B, 77] 拆词后的index
+        # print(batch_encoding["length"].shape)         # [B] 代表每个句子的真实长度 <= 77
+        # print(batch_encoding["attention_mask"].shape) # [B, 77] 存储 0,1 1代表真实词,0代表padding
+
         # 拿出input_ids然后传入transformer进行特征提取。
-        tokens          = batch_encoding["input_ids"].to(self.device)
+        tokens          = batch_encoding["input_ids"].to(self.device)   # [B, 77]
         outputs         = self.transformer(input_ids=tokens, output_hidden_states=self.layer=="hidden")
+
         # 取出所有的token
         if self.layer == "last":
-            z = outputs.last_hidden_state
+            z = outputs.last_hidden_state   # [B, 77, 768]
         elif self.layer == "pooled":
-            z = outputs.pooler_output[:, None, :]
+            z = outputs.pooler_output[:, None, :]   # [B, 768] -> [B, 1, 768]
         else:
             z = outputs.hidden_states[self.layer_idx]
         return z
