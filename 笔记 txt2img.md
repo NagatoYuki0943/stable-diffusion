@@ -16,7 +16,7 @@ Stable Diffusion最开始的应用应该是文本生成图像，即文生图，�
 
 Stable Diffusion基于扩散模型，所以不免包含不断去噪的过程，如果是图生图的话，还有不断加噪的过程，此时离不开DDPM那张老图，如下：
 
-![DDPM](笔记.assets/DDPM.png)
+![DDPM](笔记 txt2img.assets/DDPM.png)
 
 Stable Diffusion相比于DDPM，使用了DDIM采样器，使用了隐空间的扩散，另外使用了非常大的LAION-5B数据集进行预训练。
 
@@ -42,9 +42,9 @@ Stable Diffusion由四大部分组成。
 
 ## 三、生成流程
 
-<img src="笔记.assets/Latent Diffusion.png" style="zoom:67%;" />
+<img src="笔记 txt2img.assets/Latent Diffusion.png" style="zoom:67%;" />
 
-<img src="笔记.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:67%;" />
+<img src="笔记 txt2img.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:50%;" />
 
 生成流程分为三个部分：
 
@@ -85,7 +85,7 @@ with torch.no_grad():
 
 ### 1、文本编码
 
-<img src="笔记.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:67%;" />
+<img src="笔记 txt2img.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:50%;" />
 
 文本编码的思路比较简单，直接使用CLIP的文本编码器进行编码就可以了，在代码中定义了一个FrozenCLIPEmbedder类别，使用了transformers库的CLIPTokenizer和CLIPTextModel。
 
@@ -145,7 +145,7 @@ class FrozenCLIPEmbedder(AbstractEncoder):
 
 ### 2、采样流程
 
-<img src="笔记.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:67%;" />
+<img src="笔记 txt2img.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom: 50%;" />
 
 #### a、生成初始噪声
 
@@ -277,9 +277,9 @@ e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
 
 这个地方我们最好结合ddim中的公式来看，我们需要获得 $\bar{\alpha}_t$、$\bar{\alpha}_{t-1}$、$\sigma_t$ 、$\sqrt{1-\bar{\alpha}_t}$ 。
 
-![](笔记.assets/ddim公式1.png)
+![](笔记 txt2img.assets/ddim公式1.png)
 
-![](笔记.assets/ddim公式2.png)
+![](笔记 txt2img.assets/ddim公式2.png)
 
 代码中，我们其实已经预先计算好了这些参数。我们只需要直接取出即可，下方的a_t也就是公式中括号外的 $\bar{\alpha}_t$  ，a_prev 就是公式中的 $ \bar{\alpha}_{t-1}$ ，sigma_t就是公式中的 $\sigma_t$ ，sqrt_one_minus_at就是公式中的 $\sqrt{1-\bar{\alpha}_t}$ 。
 
@@ -409,7 +409,7 @@ ResBlock用于结合时间步Timesteps Embedding，Transformer模块用于结合
 
 我在这里放一张大图，同学们可以看到内部shape的变化。
 
-![](笔记.assets/stable-diffusion unet.jpeg)
+![](笔记 txt2img.assets/stable-diffusion unet.jpeg)
 
 Unet代码如下所示：
 
@@ -782,7 +782,7 @@ class UNetModel(nn.Module):
 
 ### 3、隐空间解码生成图片
 
-<img src="笔记.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:67%;" />
+<img src="笔记 txt2img.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:50%;" />
 
 通过上述步骤，已经可以多次采样获得结果，然后我们便可以通过隐空间解码生成图片。
 
