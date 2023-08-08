@@ -1,4 +1,4 @@
-[Diffusion扩散模型学习3——Stable Diffusion结构解析-以图像生成图像（图生图，img2img）为例_Bubbliiiing的博客-CSDN博客](https://blog.csdn.net/weixin_44791964/article/details/131992399)
+[Diffusion扩散模型学习2——Stable Diffusion结构解析-以文本生成图像为例_Bubbliiiing的博客-CSDN博客](https://blog.csdn.net/weixin_44791964/article/details/130588215)
 
 # 源码下载地址
 
@@ -16,7 +16,7 @@ Stable Diffusion最开始的应用应该是文本生成图像，即文生图，�
 
 Stable Diffusion基于扩散模型，所以不免包含不断去噪的过程，如果是图生图的话，还有不断加噪的过程，此时离不开DDPM那张老图，如下：
 
-![DDPM](笔记 img2img.assets/DDPM.png)
+![DDPM](笔记1 txt2img.assets/DDPM.png)
 
 Stable Diffusion相比于DDPM，使用了DDIM采样器，使用了隐空间的扩散，另外使用了非常大的LAION-5B数据集进行预训练。
 
@@ -26,15 +26,7 @@ Stable Diffusion相比于DDPM，使用了DDIM采样器，使用了隐空间的�
 
 大模型、AIGC是当前行业的趋势，不会的话容易被淘汰，hh。
 
-txt2img的原理如博文
-
-[Diffusion扩散模型学习2——Stable Diffusion结构解析-以文本生成图像（txt2img）为例](https://blog.csdn.net/weixin_44791964/article/details/130588215)
-
-所示。
-
 ## 二、Stable Diffusion的组成
-
-Stable Diffusion由四大部分组成。
 
 Stable Diffusion由四大部分组成。
 
@@ -46,47 +38,27 @@ Stable Diffusion由四大部分组成。
 
 4. CLIPEmbedder文本编码器。
 
-每一部分都很重要，我们以图像生成图像为例进行解析。既然是图像生成图像，那么我们的输入有两个，一个是文本，另外一个是图片。
+每一部分都很重要，我们首先以文本生成图像为例进行解析。既然是文本生成图像，那么我们的输入也只剩下文本了，这时候没有输入图片。
 
-## 三、img2img生成流程
+## 三、生成流程
 
-<img src="笔记 img2img.assets/img2img生成流程.png" alt="img" style="zoom: 50%;" />
+<img src="笔记1 txt2img.assets/Latent Diffusion.png" style="zoom:67%;" />
 
-生成流程分为四个部分：
+<img src="笔记1 txt2img.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:50%;" />
 
-1. 对图片进行VAE编码，根据denoise数值进行加噪声。
-2. Prompt文本编码。
-3. 根据denoise数值进行若干次采样。
-4. 使用VAE进行解码。
+生成流程分为三个部分：
 
-相比于文生图，图生图的输入发生了变化，不再以Gaussian noise作为初始化，而是以**加噪后的图像特征为初始化**，**这样便以图像的方式为模型注入了信息。**
+1. prompt文本编码。
 
-详细来讲，如上图所示：
+2. 进行若干次采样。
 
-- 第一步为对输入的图像利用VAE编码，获得输入图像的Latent特征；然后使用该Latent特征基于DDIM Sampler进行加噪，此时获得输入图片加噪后的特征。假设我们设置denoise数值为0.8，总步数为20步，那么第一步中，我们会对输入图片进行0.8x20次的加噪声，剩下4步不加，可理解为打乱了80%的特征，保留20%的特征。
-- 第二步是对输入的文本进行编码，获得文本特征；
-- 第三步是根据denoise数值对 第一步中获得的 **加噪后的特征** 进行若干次采样。还是以第一步中denoise数值为0.8为例，我们**只加了0.8x20次噪声**，**那么我们也只需要进行0.8x20次采样就可以恢复出图片了**。
-- 第四步是**将采样后的图片利用VAE的Decoder进行恢复。**
+3. 进行解码。
 
 ```python
 with torch.no_grad():
     if seed == -1:
         seed = random.randint(0, 65535)
     seed_everything(seed)
-
-    # ----------------------- #
-    #   对输入图片进行编码并加噪
-    # ----------------------- #
-    if image_path is not None:
-        img = HWC3(np.array(img, np.uint8))
-        img = torch.from_numpy(img.copy()).float().cuda() / 127.0 - 1.0
-        img = torch.stack([img for _ in range(num_samples)], dim=0)
-        img = einops.rearrange(img, 'b h w c -> b c h w').clone()
-
-        ddim_sampler.make_schedule(ddim_steps, ddim_eta=eta, verbose=True)
-        t_enc = min(int(denoise_strength * ddim_steps), ddim_steps - 1)
-        z = model.get_first_stage_encoding(model.encode_first_stage(img))
-        z_enc = ddim_sampler.stochastic_encode(z, torch.tensor([t_enc] * num_samples).to(model.device))
 
     # ----------------------- #
     #   获得编码后的prompt
@@ -96,16 +68,13 @@ with torch.no_grad():
     H, W    = input_shape
     shape   = (4, H // 8, W // 8)
 
-    if image_path is not None:
-        samples = ddim_sampler.decode(z_enc, cond, t_enc, unconditional_guidance_scale=scale, unconditional_conditioning=un_cond)
-    else:
-        # ----------------------- #
-        #   进行采样
-        # ----------------------- #
-        samples, intermediates = ddim_sampler.sample(ddim_steps, num_samples,
-                                                        shape, cond, verbose=False, eta=eta,
-                                                        unconditional_guidance_scale=scale,
-                                                        unconditional_conditioning=un_cond)
+    # ----------------------- #
+    #   进行采样
+    # ----------------------- #
+    samples, intermediates = ddim_sampler.sample(ddim_steps, num_samples,
+                                                    shape, cond, verbose=False, eta=eta,
+                                                    unconditional_guidance_scale=scale,
+                                                    unconditional_conditioning=un_cond)
 
     # ----------------------- #
     #   进行解码
@@ -114,45 +83,9 @@ with torch.no_grad():
     x_samples = (einops.rearrange(x_samples, 'b c h w -> b h w c') * 127.5 + 127.5).cpu().numpy().clip(0, 255).astype(np.uint8)
 ```
 
-### 1、输入图片编码
+### 1、文本编码
 
-<img src="笔记 img2img.assets/img2img生成流程.png" alt="img" style="zoom: 50%;" />
-
-在图生图中，我们首先要指定一张参考的图像，然后在这个参考图像上开始工作：
-
-1、利用VAE编码器对这张参考图像进行编码，使其进入隐空间，**只有进入了隐空间，网络才知道这个图像是什么**；
-
-2、然后使用该Latent特征基于DDIM Sampler进行加噪，此时获得输入图片加噪后的特征。加噪的逻辑如下：
-
-- denoise可认为是重建的比例，1代表全部重建，0代表不重建；
-- 假设我们设置denoise数值为0.8，总步数为20步；我们会对输入图片进行0.8x20次的加噪声，剩下4步不加，可理解为80%的特征，保留20%的特征；不过就算**加完20步噪声**，**原始输入图片的信息还是有一点保留的，不是完全不保留。**
-
-此时我们便获得**在隐空间加噪后的图像**，后续会在这个 **隐空间加噪后的图像** 的基础上进行采样。
-
-```python
-with torch.no_grad():
-    if seed == -1:
-        seed = random.randint(0, 65535)
-    seed_everything(seed)
-
-    # ----------------------- #
-    #   对输入图片进行编码并加噪
-    # ----------------------- #
-    if image_path is not None:
-        img = HWC3(np.array(img, np.uint8))
-        img = torch.from_numpy(img.copy()).float().cuda() / 127.0 - 1.0
-        img = torch.stack([img for _ in range(num_samples)], dim=0)
-        img = einops.rearrange(img, 'b h w c -> b c h w').clone()
-
-        ddim_sampler.make_schedule(ddim_steps, ddim_eta=eta, verbose=True)
-        t_enc = min(int(denoise_strength * ddim_steps), ddim_steps - 1)
-        z = model.get_first_stage_encoding(model.encode_first_stage(img))
-        z_enc = ddim_sampler.stochastic_encode(z, torch.tensor([t_enc] * num_samples).to(model.device))
-```
-
-### 2、文本编码
-
-<img src="笔记 img2img.assets/img2img生成流程.png" alt="img" style="zoom: 50%;" />
+<img src="笔记1 txt2img.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:50%;" />
 
 文本编码的思路比较简单，直接使用CLIP的文本编码器进行编码就可以了，在代码中定义了一个FrozenCLIPEmbedder类别，使用了transformers库的CLIPTokenizer和CLIPTextModel。
 
@@ -210,46 +143,86 @@ class FrozenCLIPEmbedder(AbstractEncoder):
         return self(text)
 ```
 
-### 3、采样流程
+### 2、采样流程
 
-<img src="笔记 img2img.assets/img2img生成流程.png" alt="img" style="zoom: 50%;" />
+<img src="笔记1 txt2img.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom: 50%;" />
 
 #### a、生成初始噪声
 
-在图生图中，我们的初始噪声获取于参考图片，所以参考第一步就可以获得图生图的噪声
+既然输入里面只有文本，没有输入图片，那么最初始的噪声哪里来？
+
+在这里直接搞个正态分布的噪声就可以了，简单理解就是：**既然在训练的时候就是不断的给原图加正态分布噪声得到最终的噪声矩阵，那么我直接初始化一个 正态分布的噪声 作为 初始噪声 生成图片很合理吧**。
+
+在代码里面其实也是这么做的，不过因为我们是在**隐空间**去进行扩散的，所以我们生成的噪声也是相对于**隐空间**的。
+
+在这里简单介绍一下VAE，VAE是变分自编码器，可以将输入图片进行编码，**一个高宽原本为512x512x3的图片在使用VAE编码后会变成64x64x4**，**这个4是人为设定的，不必纠结为什么不是3**。这个时候我们就使用一个简单的矩阵代替原有的512x512x3的图片了，传输与存储成本就很低。**在实际要去看的时候，可以对64x64x4的矩阵进行解码，获得512x512x3的图片。**
+
+因此，如果 我们生成的噪声是相对于**隐空间**的，同时我们要生成一个512x512x3的图片，那么我们就要初始化一个64x64x4的隐向量，我们在隐空间扩散好后，**再使用解码器就可以生成512x512x3的图像。**
+
+在代码中，我们确实是这么做的，初始噪声的生成代码为：
+
+```python
+img = torch.randn(shape, device=device)
+```
+
+代码位于ldm.models.diffusion.ddim.py中的ddim_sampling方法中。shape是外面传进来的，大小为`[4, 64, 64]`。
+
+```python
+    @torch.no_grad()
+    def ddim_sampling(self, cond, shape,
+                      x_T=None, ddim_use_original_steps=False,
+                      callback=None, timesteps=None, quantize_denoised=False,
+                      mask=None, x0=None, img_callback=None, log_every_t=100,
+                      temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
+                      unconditional_guidance_scale=1., unconditional_conditioning=None,):
+        device = self.model.betas.device
+        b = shape[0]
+        # 生成隐空间的初始向量，文生图。
+        # 或者直接使用传入进来的x_T，图生图。
+        if x_T is None:
+            img = torch.randn(shape, device=device) # [B, 4, 64, 64]
+        else:
+            img = x_T
+```
 
 #### b、对噪声进行N次采样
 
 既然Stable Diffusion是一个不断扩散的过程，那么少不了不断的去噪声，那么怎么去噪声便是一个问题。
 
-在上一步中，我们已经获得了一个图生图的噪声，它是一个符合正态分布的向量，我们便从它开始去噪声。
+在上一步中，我们已经获得了一个img，它是一个符合正态分布的向量，我们便从它开始去噪声。
 
-我们会对ddim_timesteps的时间步取反，因为我们现在是去噪声而非加噪声，然后对其进行一个循环，由于我们此时不再是txt2img中的采样流程，我们使用sampler的另外一个方法decode，循环的代码如下：
+我们会对ddim_timesteps的时间步取反，因为我们现在是去噪声而非加噪声，然后对其进行一个循环，循环的代码如下：
+
+**循环中有一个mask，它的作用是用于进行局部的重建，对部分区域的隐向量进行mask，此处没用到**。其它东西都是个方法或者函数，也看不出东西来。**在这里面看起来最像采样过程的就是p_sample_ddim方法，我们需要进入p_sample_ddim这个方法看看。**
 
 ```python
-@torch.no_grad()
-def decode(self, x_latent, cond, t_start, unconditional_guidance_scale=1.0, unconditional_conditioning=None,
-           use_original_steps=False):
+for i, step in enumerate(iterator):
+    # index是用来取得对应的调节参数的
+    index   = total_steps - i - 1
+    # 将步数拓展到bs维度
+    ts      = torch.full((b,), step, device=device, dtype=torch.long)
 
-    # 使用ddim的时间步
-    # 这里内容看起来很多，但是其实很少，本质上就是取了self.ddim_timesteps，然后把它reversed一下
-    timesteps = np.arange(self.ddpm_num_timesteps) if use_original_steps else self.ddim_timesteps
-    timesteps = timesteps[:t_start]
+    # 用于进行局部的重建，对部分区域的隐向量进行mask。
+    if mask is not None:
+        assert x0 is not None
+        img_orig = self.model.q_sample(x0, ts)  # TODO: deterministic forward pass?
+        img = img_orig * mask + (1. - mask) * img
 
-    time_range = np.flip(timesteps)
-    total_steps = timesteps.shape[0]
-    print(f"Running DDIM Sampling with {total_steps} timesteps")
+    # 进行采样
+    outs = self.p_sample_ddim(img, cond, ts, index=index, use_original_steps=ddim_use_original_steps,
+                                quantize_denoised=quantize_denoised, temperature=temperature,
+                                noise_dropout=noise_dropout, score_corrector=score_corrector,
+                                corrector_kwargs=corrector_kwargs,
+                                unconditional_guidance_scale=unconditional_guidance_scale,
+                                unconditional_conditioning=unconditional_conditioning)
+    img, pred_x0 = outs
+    # 回调函数
+    if callback: callback(i)
+    if img_callback: img_callback(pred_x0, i)
 
-    iterator = tqdm(time_range, desc='Decoding image', total=total_steps)
-    x_dec = x_latent
-    for i, step in enumerate(iterator):
-        index = total_steps - i - 1
-        ts = torch.full((x_latent.shape[0],), step, device=x_latent.device, dtype=torch.long)
-        # 进行单次采样
-        x_dec, _ = self.p_sample_ddim(x_dec, cond, ts, index=index, use_original_steps=use_original_steps,
-                                      unconditional_guidance_scale=unconditional_guidance_scale,
-                                      unconditional_conditioning=unconditional_conditioning)
-    return x_dec
+    if index % log_every_t == 0 or index == total_steps - 1:
+        intermediates['x_inter'].append(img)
+        intermediates['pred_x0'].append(pred_x0)
 ```
 
 #### c、单次采样解析
@@ -268,8 +241,8 @@ else:
     # 一般都是有neg prompt的，所以进入到这里
     # 在这里我们对隐向量和步数进行复制，一个属于pos prompt，一个属于neg prompt
     # torch.cat默认堆叠维度为0，所以是在bs维度进行堆叠，二者不会互相影响
-    x_in = torch.cat([x] * 2)
-    t_in = torch.cat([t] * 2)
+    x_in = torch.cat([x] * 2)   # [B, 4, 64, 64] ->  [2*B, 4, 64, 64]
+    t_in = torch.cat([t] * 2)   # [B] -> [2*B]
     # 然后我们将pos prompt和neg prompt堆叠到一个batch中
     if isinstance(c, dict):
         assert isinstance(unconditional_conditioning, dict)
@@ -304,9 +277,9 @@ e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
 
 这个地方我们最好结合ddim中的公式来看，我们需要获得 $\bar{\alpha}_t$、$\bar{\alpha}_{t-1}$、$\sigma_t$ 、$\sqrt{1-\bar{\alpha}_t}$ 。
 
-![ddim公式1](笔记 img2img.assets/ddim公式1.png)
+![](笔记1 txt2img.assets/ddim公式1.png)
 
-![ddim公式2](笔记 img2img.assets/ddim公式2.png)
+![](笔记1 txt2img.assets/ddim公式2.png)
 
 代码中，我们其实已经预先计算好了这些参数。我们只需要直接取出即可，下方的a_t也就是公式中括号外的 $\bar{\alpha}_t$  ，a_prev 就是公式中的 $ \bar{\alpha}_{t-1}$ ，sigma_t就是公式中的 $\sigma_t$ ，sqrt_one_minus_at就是公式中的 $\sqrt{1-\bar{\alpha}_t}$ 。
 
@@ -436,7 +409,7 @@ ResBlock用于结合时间步Timesteps Embedding，Transformer模块用于结合
 
 我在这里放一张大图，同学们可以看到内部shape的变化。
 
-![](笔记 img2img.assets/stable-diffusion unet.jpeg)
+![](笔记1 txt2img.assets/stable-diffusion unet.jpeg)
 
 Unet代码如下所示：
 
@@ -807,9 +780,9 @@ class UNetModel(nn.Module):
             return self.out(h)
 ```
 
-### 4、隐空间解码生成图片
+### 3、隐空间解码生成图片
 
-<img src="笔记 img2img.assets/img2img生成流程.png" alt="img" style="zoom: 50%;" />
+<img src="笔记1 txt2img.assets/Stable Diffusion 生成流程.png" alt="Stable Diffusion 生成流程" style="zoom:50%;" />
 
 通过上述步骤，已经可以多次采样获得结果，然后我们便可以通过隐空间解码生成图片。
 
@@ -837,22 +810,21 @@ def decode_first_stage(self, z, predict_cids=False, force_not_quantize=False):
             return self.first_stage_model.decode(z)
 ```
 
-# 图像到图像预测过程代码
+# 文本到图像预测过程代码
 
 整体预测代码如下：
 
 ```python
-import os
 import random
 
-import cv2
 import einops
 import numpy as np
 import torch
-from PIL import Image
+import cv2
+import os
+from ldm_hacked import DDIMSampler
+from ldm_hacked import create_model, load_state_dict, DDIMSampler
 from pytorch_lightning import seed_everything
-
-from ldm_hacked import *
 
 # ----------------------- #
 #   使用的参数
@@ -861,43 +833,28 @@ from ldm_hacked import *
 config_path = "model_data/sd_v15.yaml"
 # 模型的地址
 model_path  = "model_data/v1-5-pruned-emaonly.safetensors"
-# fp16，可以加速与节省显存
-sd_fp16     = True
-vae_fp16    = True
 
-# ----------------------- #
-#   生成图片的参数
-# ----------------------- #
-# 生成的图像大小为input_shape，对于img2img会进行Centter Crop
+# 生成的图像大小为input_shape
 input_shape = [512, 512]
 # 一次生成几张图像
-num_samples = 1
+num_samples = 2
 # 采样的步数
 ddim_steps  = 20
 # 采样的种子，为-1的话则随机。
 seed        = 12345
 # eta
 eta         = 0
-# denoise强度，for img2img
-denoise_strength = 1.0
 
-# ----------------------- #
-#   提示词相关参数
-# ----------------------- #
 # 提示词
-prompt      = "a cute cat, with yellow leaf, trees"
+prompt      = "a cat"
 # 正面提示词
 a_prompt    = "best quality, extremely detailed"
 # 负面提示词
 n_prompt    = "longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality"
 # 正负扩大倍数
 scale       = 9
-# img2img使用，如果不想img2img这设置为None。
-image_path  = None
 
-# ----------------------- #
-#   保存路径
-# ----------------------- #
+# save_path
 save_path   = "imgs/outputs_imgs"
 
 # ----------------------- #
@@ -907,37 +864,11 @@ model   = create_model(config_path).cpu()
 model.load_state_dict(load_state_dict(model_path, location='cuda'), strict=False)
 model   = model.cuda()
 ddim_sampler = DDIMSampler(model)
-if sd_fp16:
-    model = model.half()
-
-if image_path is not None:
-    img = Image.open(image_path)
-    img = crop_and_resize(img, input_shape[0], input_shape[1])
 
 with torch.no_grad():
     if seed == -1:
         seed = random.randint(0, 65535)
     seed_everything(seed)
-    
-    # ----------------------- #
-    #   对输入图片进行编码并加噪
-    # ----------------------- #
-    if image_path is not None:
-        img = HWC3(np.array(img, np.uint8))
-        img = torch.from_numpy(img.copy()).float().cuda() / 127.0 - 1.0
-        img = torch.stack([img for _ in range(num_samples)], dim=0)
-        img = einops.rearrange(img, 'b h w c -> b c h w').clone()
-        if vae_fp16:
-            img = img.half()
-            model.first_stage_model = model.first_stage_model.half()
-        else:
-            model.first_stage_model = model.first_stage_model.float()
-
-        ddim_sampler.make_schedule(ddim_steps, ddim_eta=eta, verbose=True)
-        t_enc = min(int(denoise_strength * ddim_steps), ddim_steps - 1)
-        z = model.get_first_stage_encoding(model.encode_first_stage(img))
-        z_enc = ddim_sampler.stochastic_encode(z, torch.tensor([t_enc] * num_samples).to(model.device))
-        z_enc = z_enc.half() if sd_fp16 else z_enc.float()
 
     # ----------------------- #
     #   获得编码后的prompt
@@ -947,22 +878,18 @@ with torch.no_grad():
     H, W    = input_shape
     shape   = (4, H // 8, W // 8)
 
-    if image_path is not None:
-        samples = ddim_sampler.decode(z_enc, cond, t_enc, unconditional_guidance_scale=scale, unconditional_conditioning=un_cond)
-    else:
-        # ----------------------- #
-        #   进行采样
-        # ----------------------- #
-        samples, intermediates = ddim_sampler.sample(ddim_steps, num_samples,
-                                                        shape, cond, verbose=False, eta=eta,
-                                                        unconditional_guidance_scale=scale,
-                                                        unconditional_conditioning=un_cond)
+    # ----------------------- #
+    #   进行采样
+    # ----------------------- #
+    samples, intermediates = ddim_sampler.sample(ddim_steps, num_samples,
+                                                    shape, cond, verbose=False, eta=eta,
+                                                    unconditional_guidance_scale=scale,
+                                                    unconditional_conditioning=un_cond)
 
     # ----------------------- #
     #   进行解码
     # ----------------------- #
-    x_samples = model.decode_first_stage(samples.half() if vae_fp16 else samples.float())
-
+    x_samples = model.decode_first_stage(samples)
     x_samples = (einops.rearrange(x_samples, 'b c h w -> b h w c') * 127.5 + 127.5).cpu().numpy().clip(0, 255).astype(np.uint8)
 
 # ----------------------- #
