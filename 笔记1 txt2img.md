@@ -261,12 +261,16 @@ else:
 
 堆叠完后，我们将隐向量、步数和prompt条件一起传入网络中，将结果在bs维度进行使用chunk进行分割。
 
-因为我们在堆叠时，neg prompt放在了前面。因此分割好后，前半部分`e_t_uncond`属于利用neg prompt得到的，后半部分`e_t`属于利用pos prompt得到的，我们本质上应该**扩大pos prompt的影响，远离neg prompt的影响**。因此，我们使用`e_t-e_t_uncond`计算二者的距离，使用scale扩大二者的距离。在e_t_uncond基础上，得到最后的隐向量。
+因为我们在堆叠时，neg prompt放在了前面。因此分割好后，前半部分`e_t_uncond`属于利用neg prompt得到的，后半部分`e_t`属于利用pos prompt得到的，我们本质上应该**扩大pos prompt的影响，远离neg prompt的影响**。注意`e_t`代表使用正向提示词的文本，是`cond`的，而`e_t_uncond`代表使用负向提示词且没有文本条件的文本，是`uncond`的。因此，我们使用`e_t-e_t_uncond`计算二者的距离，使用scale扩大二者的距离。在e_t_uncond基础上，得到最后的隐向量。
 
 ```python
 # 堆叠完后，隐向量、步数和prompt条件一起传入网络中，将结果在bs维度进行使用chunk进行分割
 e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2)
+# 使用 e_t-e_t_uncond 计算二者的距离，使用 scale 扩大二者的距离，在 e_t_uncond 基础上，得到最后的隐向量。
 e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
+
+# 另一种理解的方式,类似动量
+e_t = unconditional_guidance_scale * e_t + (1 - unconditional_guidance_scale) * e_t_uncond
 ```
 
 此时获得的e_t就是通过隐向量和prompt共同获得的预测噪声啦。
