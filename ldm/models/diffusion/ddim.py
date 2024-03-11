@@ -212,10 +212,12 @@ class DDIMSampler(object):
             else:
                 c_in = torch.cat([unconditional_conditioning, c])
             # 堆叠完后，隐向量、步数和prompt条件一起传入网络中，将结果在bs维度进行使用chunk进行分割
+            # [neg_uncond, pos_cond]
             e_t_uncond, e_t = self.model.apply_model(x_in, t_in, c_in).chunk(2) # [2*B, 4, 64, 64], [2*B], [2*B, 77, 768] -> [B, 4, 64, 64], [B, 4, 64, 64]
-            # e_t为最终预测的噪音
-            # 使用`e_t-e_t_uncond`计算二者的距离，使用scale扩大二者的距离。在e_t_uncond基础上，得到最后的隐向量
-            e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
+            # 使用 e_t-e_t_uncond 计算二者的距离，使用 scale 扩大二者的距离，在 e_t_uncond 基础上，得到最后的隐向量。
+            # e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
+            # 另一种理解的方式,类似动量
+            e_t = unconditional_guidance_scale * e_t + (1 - unconditional_guidance_scale) * e_t_uncond
 
         # 一般不用
         if score_corrector is not None:

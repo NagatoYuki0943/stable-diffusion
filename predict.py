@@ -86,7 +86,7 @@ with torch.no_grad():
     if seed == -1:
         seed = random.randint(0, 65535)
     seed_everything(seed)
-    
+
     # ----------------------- #
     #   对输入图片进行编码并加噪
     # ----------------------- #
@@ -118,9 +118,11 @@ with torch.no_grad():
     else:
         mask = None
 
-    # ----------------------- #
+    # ---------------------------------------------- #
     #   获得编码后的prompt
-    # ----------------------- #
+    #   提示词有正提示
+    #   负提示没有提示词,是随机生成的
+    # ---------------------------------------------- #
     cond    = {"c_crossattn": [model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]}   # [B, 77, 768]
     un_cond = {"c_crossattn": [model.get_learned_conditioning([n_prompt] * num_samples)]}                   # [B, 77, 768]
     H, W    = input_shape
