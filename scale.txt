@@ -1,0 +1,4 @@
+y = neg + scale * (pos - neg)           # 正负提示计算
+y = neg + scale * pos - scale * neg
+y = scale * pos + neg - scale * neg
+y = scale * pos + (1 - scale) * neg     # 另一种理解方式
