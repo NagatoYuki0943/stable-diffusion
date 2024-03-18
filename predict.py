@@ -120,8 +120,9 @@ with torch.no_grad():
 
     # ---------------------------------------------- #
     #   获得编码后的prompt
-    #   提示词有正提示
-    #   负提示没有提示词,是随机生成的
+    #   提示词有正面提示词,是有条件的
+    #   负面提示词没有提示词,是无条件的
+    #   正负提示词使用相同的隐变量和时间步
     # ---------------------------------------------- #
     cond    = {"c_crossattn": [model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]}   # [B, 77, 768]
     un_cond = {"c_crossattn": [model.get_learned_conditioning([n_prompt] * num_samples)]}                   # [B, 77, 768]

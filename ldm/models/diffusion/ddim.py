@@ -195,7 +195,7 @@ class DDIMSampler(object):
             # 一般都是有neg prompt的，所以进入到这里
             # 在这里我们对隐向量和步数进行复制，一个属于pos prompt，一个属于neg prompt
             # torch.cat默认堆叠维度为0，所以是在bs维度进行堆叠，二者不会互相影响
-            x_in = torch.cat([x] * 2)   # [B, 4, 64, 64] ->  [2*B, 4, 64, 64]
+            x_in = torch.cat([x] * 2)   # [B, 4, 64, 64] ->  [2*B, 4, 64, 64]   正负提示词使用相同的隐变量和时间步
             t_in = torch.cat([t] * 2)   # [B] -> [2*B]
             # 然后我们将pos prompt和neg prompt堆叠到一个batch中
             if isinstance(c, dict):
@@ -287,7 +287,7 @@ class DDIMSampler(object):
         for i, step in enumerate(iterator):
             index = total_steps - i - 1
             ts = torch.full((x_latent.shape[0],), step, device=x_latent.device, dtype=torch.long)
-            
+
             # --------------------------------------------------------------------------------- #
             #   替换特征的地方
             #   用于进行局部的重建，对部分区域的隐向量进行mask。
